@@ -1,0 +1,6 @@
+[submodule "systems/frontend"]
+	path = systems/frontend
+	url = https://github.com/GeorgeeChiang/agent_work_sample_frontend.git
+[submodule "systems/backend"]
+	path = systems/backend
+	url = https://github.com/GeorgeeChiang/agent_work_sample_backend.git
