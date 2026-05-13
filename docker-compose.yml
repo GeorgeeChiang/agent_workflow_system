@@ -36,6 +36,30 @@ services:
     ports:
       - "8080:80"
 
+  workbench-api:
+    build:
+      context: ./workbench_api
+    environment:
+      AGENT_RUNTIME_PROVIDER: bridge
+      AGENT_BRIDGE_URL: http://host.docker.internal:8020
+      AGENT_WORKSPACE_ROOT: /workspace
+      WORKBENCH_DATA_DIR: /data
+    volumes:
+      - workbench_data:/data
+      - .:/workspace:ro
+    ports:
+      - "8010:8010"
+
+  workbench-ui:
+    build:
+      context: ./workbench_ui
+      args:
+        VITE_API_BASE_URL: /api
+    depends_on:
+      - workbench-api
+    ports:
+      - "8090:80"
+
 volumes:
   library_db:
-
+  workbench_data:

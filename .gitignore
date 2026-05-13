@@ -1,0 +1,12 @@
+.agent_codex_home/
+agent_bridge/bridge.log
+agent_bridge/bridge.out.txt
+agent_bridge/bridge.err.txt
+agent_bridge/traces/
+agent_bridge/agent_bridge/
+workbench_ui/dist/
+workbench_ui/node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
