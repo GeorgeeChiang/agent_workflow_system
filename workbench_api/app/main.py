@@ -3,16 +3,18 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from .agent_runtime import agent_runtime_status
 from .logic import (
     create_session,
     deploy_mock,
     mark_ready_for_poc,
+    plan_poc,
     repo_versions,
     reply_to_session,
     summarize_conversation,
     summarize_spec,
 )
-from .models import AgentSession, RepoVersions, SessionCreate, SessionReply
+from .models import AgentRuntimeStatus, AgentSession, RepoVersions, SessionCreate, SessionReply
 from .storage import clear_sessions, delete_session, get_session, init_db, load_sessions, save_session
 
 
@@ -40,6 +42,11 @@ def health() -> dict[str, str]:
 @app.get("/repo-versions", response_model=RepoVersions)
 def get_repo_versions() -> RepoVersions:
     return repo_versions()
+
+
+@app.get("/agent-runtime/status", response_model=AgentRuntimeStatus)
+def get_agent_runtime_status() -> AgentRuntimeStatus:
+    return AgentRuntimeStatus.model_validate(agent_runtime_status())
 
 
 @app.get("/sessions", response_model=list[AgentSession])
@@ -112,6 +119,16 @@ def ready_for_poc(session_id: str) -> AgentSession:
     if not session.spec_summary_ready:
         raise HTTPException(status_code=409, detail="請先總結 session 規格")
     return save_session(mark_ready_for_poc(session))
+
+
+@app.post("/sessions/{session_id}/poc-plan", response_model=AgentSession)
+def poc_plan(session_id: str) -> AgentSession:
+    session = get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="找不到 session")
+    if not session.spec_summary_ready:
+        raise HTTPException(status_code=409, detail="請先總結 session 規格")
+    return save_session(plan_poc(session))
 
 
 @app.post("/sessions/{session_id}/deploy-mock", response_model=AgentSession)

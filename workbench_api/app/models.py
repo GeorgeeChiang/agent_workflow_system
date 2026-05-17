@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 RequestType = Literal["spec_qna", "feature_change"]
@@ -17,6 +17,16 @@ class SessionMessage(BaseModel):
     role: MessageRole
     content: str
     visibility: MessageVisibility
+    created_at: str
+
+
+class AgentRun(BaseModel):
+    id: str
+    task: str
+    provider: str
+    model: str
+    trace_id: str | None = None
+    status: str
     created_at: str
 
 
@@ -35,9 +45,11 @@ class AgentSession(BaseModel):
     sources: list[str]
     next_actions: list[str]
     messages: list[SessionMessage]
+    agent_runs: list[AgentRun] = Field(default_factory=list)
     conversation_summary: str | None
     spec_summary: str | None
     spec_summary_ready: bool
+    poc_plan: str | None = None
     poc_url: str | None
     created_at: str
     updated_at: str
@@ -47,7 +59,7 @@ class SessionCreate(BaseModel):
     user_name: str
     request_text: str
     request_type: RequestType
-    answer_strategy: Literal["rag", "coding_agent_readonly"] = "rag"
+    answer_strategy: AnswerStrategy = "rag"
     gateway_model: str = "5.4-Mini"
     coding_model: str = "5.4-Mini"
 
@@ -73,3 +85,10 @@ class RepoVersion(BaseModel):
 
 class RepoVersions(BaseModel):
     items: list[RepoVersion]
+
+
+class AgentRuntimeStatus(BaseModel):
+    provider: str
+    status: str
+    bridge_url: str | None = None
+    detail: str | None = None

@@ -17,6 +17,16 @@ type SessionMessage = {
   created_at: string;
 };
 
+type AgentRun = {
+  id: string;
+  task: string;
+  provider: string;
+  model: string;
+  trace_id: string | null;
+  status: string;
+  created_at: string;
+};
+
 type AgentSession = {
   id: string;
   user_name: string;
@@ -32,9 +42,11 @@ type AgentSession = {
   sources: string[];
   next_actions: string[];
   messages: SessionMessage[];
+  agent_runs: AgentRun[];
   conversation_summary: string | null;
   spec_summary: string | null;
   spec_summary_ready: boolean;
+  poc_plan: string | null;
   poc_url: string | null;
   created_at: string;
   updated_at: string;
@@ -51,6 +63,13 @@ type RepoVersion = {
 
 type RepoVersions = {
   items: RepoVersion[];
+};
+
+type AgentRuntimeStatus = {
+  provider: string;
+  status: string;
+  bridge_url: string | null;
+  detail: string | null;
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -118,9 +137,11 @@ function makePendingSession(payload: {
         created_at: createdAt,
       },
     ],
+    agent_runs: [],
     conversation_summary: null,
     spec_summary: null,
     spec_summary_ready: false,
+    poc_plan: null,
     poc_url: null,
     created_at: createdAt,
     updated_at: createdAt,
@@ -139,6 +160,7 @@ function defaultFollowUpText(type: RequestType) {
 function App() {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [repoVersions, setRepoVersions] = useState<RepoVersions | null>(null);
+  const [agentRuntimeStatus, setAgentRuntimeStatus] = useState<AgentRuntimeStatus | null>(null);
   const [selectedRepoVersionName, setSelectedRepoVersionName] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<RequestType>("spec_qna");
@@ -164,6 +186,10 @@ function App() {
     setSelectedRepoVersionName((current) => current ?? payload.items[0]?.name ?? null);
   }
 
+  async function refreshAgentRuntimeStatus() {
+    setAgentRuntimeStatus(await api<AgentRuntimeStatus>("/agent-runtime/status"));
+  }
+
   async function deleteOneSession(sessionId: string) {
     if (!window.confirm(`確定要刪除 ${sessionId} 嗎？`)) return;
 
@@ -183,6 +209,7 @@ function App() {
   useEffect(() => {
     void refreshSessions();
     void refreshRepoVersions();
+    void refreshAgentRuntimeStatus();
   }, []);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
@@ -434,7 +461,7 @@ function App() {
         </div>
         <div>
           <MessageSquareText size={20} />
-          <span>Code Agent：5.4-Mini</span>
+          <span>Code Agent：5.4-Mini{agentRuntimeStatus ? ` / ${labelRuntimeStatus(agentRuntimeStatus.status)}` : ""}</span>
         </div>
         <div>
           <Search size={20} />
@@ -633,6 +660,25 @@ function App() {
 
               {activeSession.next_actions.length > 0 && <ListBlock title="下一步" items={activeSession.next_actions} />}
 
+              {activeSession.agent_runs.length > 0 && (
+                <section>
+                  <h3>Agent 執行紀錄</h3>
+                  <div className="run-list">
+                    {activeSession.agent_runs.map((run) => (
+                      <div className="run-item" key={run.id}>
+                        <div>
+                          <strong>{labelAgentTask(run.task)}</strong>
+                          <span>
+                            {run.provider} / {run.model} / {run.status}
+                          </span>
+                        </div>
+                        <code>{run.trace_id ?? "local-runtime"}</code>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {activeSession.request_type === "spec_qna" && !activeSession.is_pending && (
                 <div className="poc-actions">
                   <button
@@ -659,6 +705,13 @@ function App() {
                 </section>
               )}
 
+              {activeSession.poc_plan && (
+                <section className="poc-plan">
+                  <h3>POC 計畫</h3>
+                  <p>{activeSession.poc_plan}</p>
+                </section>
+              )}
+
               {activeSession.request_type === "feature_change" && !activeSession.is_pending && (
                 <div className="poc-actions">
                   {!activeSession.spec_summary_ready && <p className="gate-note">進入 POC 前，需要先總結 session 規格。</p>}
@@ -668,6 +721,14 @@ function App() {
                   >
                     <Sparkles size={18} />
                     總結 session 規格
+                  </button>
+                  <button
+                    className="secondary-action"
+                    disabled={!activeSession.spec_summary_ready}
+                    onClick={() => runAction(() => api(`/sessions/${activeSession.id}/poc-plan`, { method: "POST" }))}
+                  >
+                    <Sparkles size={18} />
+                    產生 POC 計畫
                   </button>
                   <button
                     className="secondary-action"
@@ -807,6 +868,25 @@ function labelStrategy(strategy: AnswerStrategy) {
     coding_agent_readonly: "原始碼分析",
     requirement_analysis: "需求分析",
   }[strategy];
+}
+
+function labelRuntimeStatus(status: string) {
+  if (status === "ok") return "已連線";
+  if (status === "unreachable") return "未連線";
+  return status;
+}
+
+function labelAgentTask(task: string) {
+  const labels: Record<string, string> = {
+    analyze_new_session: "首次分析",
+    analyze_followup: "追問分析",
+    summarize_conversation: "對話總結",
+    summarize_spec: "規格總結",
+    ready_for_poc: "POC 準備",
+    deploy_poc: "POC 部署",
+    plan_poc: "POC 計畫",
+  };
+  return labels[task] ?? task;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

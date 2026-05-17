@@ -13,7 +13,9 @@
 | 3 | Coding Agent 回答或分析 | 影響範圍、待釐清問題、參考來源 |
 | 4 | 使用者總結 session | session 規格總結 |
 | 5 | 標記可進 POC | ready_for_poc |
-| 6 | Mock / 真實部署 | POC URL |
+| 6 | 產生 POC 計畫 | 目標、範圍、驗收、風險 |
+| 7 | Mock / 真實部署 | POC URL |
+| 8 | 系統保存 Coding Agent 執行紀錄 | provider、model、task、trace id |
 
 ## 第一階段範圍
 | 項目 | 工作內容 | 技術 |
@@ -23,6 +25,9 @@
 | 版本顯示 | 顯示 frontend / backend 最新版本號與 commit 細節 | Git submodule、Git metadata |
 | Agent 分層 | Gateway 與 Coding Agent 分離，保留 provider 介面 | Python protocol / adapter |
 | POC 流程 | session 總結、ready_for_poc、deploy mock | FastAPI、React |
+| POC 計畫 | 不依賴 Docker，先產生可審核的 POC 實作計畫 | Coding Agent |
+| 執行稽核 | 保存每次 Coding Agent 執行紀錄，不外露 prompt 或 source code | SQLite、bridge trace id |
+| Runtime 狀態 | 顯示 bridge 是否可連線，避免使用者送出後才發現 agent 不可用 | FastAPI health check |
 
 ## 分階段執行
 | 階段 | 目標 | 驗收條件 |
@@ -40,6 +45,7 @@
 | 3 | 釐清 provider 介面 | Gateway 可切換到 Codex / Claude |
 | 4 | 保留 mock 行為 | demo 不中斷、UI 可穩定展示 |
 | 5 | 文件化 | README 與 docs 同步更新 |
+| 6 | Agent 執行紀錄 | session 可看到 provider、model、task、trace id |
 
 ## 建議技術
 | 類型 | 建議 | 備註 |
@@ -50,4 +56,3 @@
 | 容器 | Docker Compose | 開源 |
 | Agent | Codex / Claude Code | 可先用 CLI，之後再接 SDK |
 | 版本來源 | Git submodule | 直接讀 repo commit |
-

@@ -121,6 +121,15 @@ function buildSchema(task) {
     };
   }
 
+  if (task === "plan_poc") {
+    return {
+      type: "object",
+      additionalProperties: false,
+      required: ["plan"],
+      properties: { plan: { type: "string" } },
+    };
+  }
+
   if (task === "ready_for_poc") {
     return {
       type: "object",
@@ -199,6 +208,17 @@ function buildPrompt(task, payload, workspaceRoot) {
     return [
       ...baseInstructions,
       "Summarize the request, decision, impacted areas, open questions, and POC readiness.",
+      `session: ${JSON.stringify(payload.session)}`,
+      "Return only valid JSON that matches the schema.",
+    ].join("\n");
+  }
+
+  if (task === "plan_poc") {
+    return [
+      ...baseInstructions,
+      "Create a POC implementation plan for PM/UX review.",
+      "The plan must not include source code.",
+      "Include goal, scope, affected areas, validation steps, risks, and expected preview result.",
       `session: ${JSON.stringify(payload.session)}`,
       "Return only valid JSON that matches the schema.",
     ].join("\n");

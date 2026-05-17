@@ -96,5 +96,7 @@ docker compose down -v
 | Gateway Agent | 分類、整理、過濾使用者輸入與 Coding Agent 回應 |
 | Coding Agent | 透過 bridge 呼叫 Codex CLI 分析 source code |
 | Session 總結 | 進入 POC 前整理目前對話規格 |
+| POC 計畫 | 在不啟動部署的情況下，先產出 PM / UX 可確認的 POC 實作計畫 |
 | Mock POC 部署 | 將 ready session 標記為已部署並顯示 URL |
-
+| Agent 執行紀錄 | 保存 provider、model、task、trace id，方便確認是否真的送到 Coding Agent |
+| Runtime 狀態 | 顯示 Coding Agent bridge 是否已連線 |

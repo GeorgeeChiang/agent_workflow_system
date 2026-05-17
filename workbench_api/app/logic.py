@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .agent_runtime import get_agent_runtime
-from .models import AgentSession, RepoVersion, RepoVersions, RequestType, SessionMessage
+from .models import AgentRun, AgentSession, RepoVersion, RepoVersions, RequestType, SessionMessage
 
 
 ROOT = Path("/workspace")
@@ -51,6 +51,25 @@ def make_message(role: str, content: str, visibility: str = "user_visible") -> S
         role=role,  # type: ignore[arg-type]
         content=content,
         visibility=visibility,  # type: ignore[arg-type]
+        created_at=now(),
+    )
+
+
+def consume_runtime_trace_id() -> str | None:
+    trace_id = getattr(RUNTIME, "last_trace_id", None)
+    if hasattr(RUNTIME, "last_trace_id"):
+        setattr(RUNTIME, "last_trace_id", None)
+    return trace_id
+
+
+def make_agent_run(task: str, model: str, trace_id: str | None) -> AgentRun:
+    return AgentRun(
+        id=make_id("run"),
+        task=task,
+        provider=getattr(RUNTIME, "name", "unknown"),
+        model=model,
+        trace_id=trace_id,
+        status="success" if trace_id else "completed",
         created_at=now(),
     )
 
@@ -227,6 +246,7 @@ def create_session(
         gateway_model=gateway_model,
         coding_model=coding_model,
     )
+    trace_id = consume_runtime_trace_id()
     agent_content = coding_agent_content(
         analysis.answer,
         analysis.impacted_areas,
@@ -258,9 +278,11 @@ def create_session(
             make_message("coding_agent", agent_content, "internal"),
             make_message("gateway", agent_content),
         ],
+        agent_runs=[make_agent_run("analyze_new_session", coding_model, trace_id)],
         conversation_summary=None,
         spec_summary=None,
         spec_summary_ready=False,
+        poc_plan=None,
         poc_url=None,
         created_at=created_at,
         updated_at=created_at,
@@ -270,6 +292,7 @@ def create_session(
 def reply_to_session(session: AgentSession, text: str) -> AgentSession:
     text = _repair_mojibake(text)
     analysis = RUNTIME.analyze_followup(session=session, text=text)
+    trace_id = consume_runtime_trace_id()
 
     session.answer = analysis.answer
     session.status = analysis.status  # type: ignore[assignment]
@@ -298,18 +321,22 @@ def reply_to_session(session: AgentSession, text: str) -> AgentSession:
             make_message("gateway", agent_content),
         ]
     )
+    session.agent_runs.append(make_agent_run("analyze_followup", session.coding_model, trace_id))
     return session
 
 
 def summarize_conversation(session: AgentSession) -> AgentSession:
     session.conversation_summary = RUNTIME.summarize_conversation(session=session)
+    trace_id = consume_runtime_trace_id()
     session.updated_at = now()
     session.messages.append(make_message("system", "已產生 session 總結。"))
+    session.agent_runs.append(make_agent_run("summarize_conversation", session.coding_model, trace_id))
     return session
 
 
 def summarize_spec(session: AgentSession) -> AgentSession:
     session.spec_summary = RUNTIME.summarize_spec(session=session)
+    trace_id = consume_runtime_trace_id()
     session.spec_summary_ready = True
     session.updated_at = now()
     session.messages.extend(
@@ -319,20 +346,39 @@ def summarize_spec(session: AgentSession) -> AgentSession:
             make_message("gateway", session.spec_summary),
         ]
     )
+    session.agent_runs.append(make_agent_run("summarize_spec", session.coding_model, trace_id))
+    return session
+
+
+def plan_poc(session: AgentSession) -> AgentSession:
+    session.poc_plan = RUNTIME.plan_poc(session=session)
+    trace_id = consume_runtime_trace_id()
+    session.updated_at = now()
+    session.messages.extend(
+        [
+            make_message("gateway", f"Gateway 已要求 Coding Agent 規劃 session {session.id} 的 POC。", "internal"),
+            make_message("coding_agent", session.poc_plan, "internal"),
+            make_message("gateway", session.poc_plan),
+        ]
+    )
+    session.agent_runs.append(make_agent_run("plan_poc", session.coding_model, trace_id))
     return session
 
 
 def mark_ready_for_poc(session: AgentSession) -> AgentSession:
     session.status = "ready_for_poc"
     session.next_actions = RUNTIME.ready_for_poc(session=session)
+    trace_id = consume_runtime_trace_id()
     session.updated_at = now()
     session.messages.append(make_message("system", "此 session 已標記為可進入 POC 階段。"))
+    session.agent_runs.append(make_agent_run("ready_for_poc", session.coding_model, trace_id))
     return session
 
 
 def deploy_mock(session: AgentSession) -> AgentSession:
     session.status = "poc_deployed"
     session.poc_url, session.next_actions = RUNTIME.deploy_poc(session=session)
+    trace_id = consume_runtime_trace_id()
     session.updated_at = now()
     session.messages.extend(
         [
@@ -340,4 +386,5 @@ def deploy_mock(session: AgentSession) -> AgentSession:
             make_message("gateway", f"Mock POC URL: {session.poc_url}"),
         ]
     )
+    session.agent_runs.append(make_agent_run("deploy_poc", session.coding_model, trace_id))
     return session

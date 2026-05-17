@@ -39,6 +39,7 @@ class AgentRuntime(Protocol):
     def analyze_followup(self, *, session: AgentSession, text: str) -> AgentAnalysis: ...
     def summarize_conversation(self, *, session: AgentSession) -> str: ...
     def summarize_spec(self, *, session: AgentSession) -> str: ...
+    def plan_poc(self, *, session: AgentSession) -> str: ...
     def ready_for_poc(self, *, session: AgentSession) -> list[str]: ...
     def deploy_poc(self, *, session: AgentSession) -> tuple[str, list[str]]: ...
 
@@ -219,6 +220,16 @@ class MockAgentRuntime:
         ]
         return "\n".join(lines)
 
+    def plan_poc(self, *, session: AgentSession) -> str:
+        lines = [
+            "POC 計畫：",
+            "1. 目標：依照已總結的 session 規格製作可驗證版本。",
+            "2. 修改範圍：" + (" / ".join(session.impacted_areas) if session.impacted_areas else "前端與後端需再確認"),
+            "3. 驗收方式：PM / UX 可透過 POC URL 操作流程並確認結果。",
+            "4. 風險：目前仍是 mock 部署，尚未接實際 branch、build、deploy 流程。",
+        ]
+        return "\n".join(lines)
+
     def ready_for_poc(self, *, session: AgentSession) -> list[str]:
         return [
             "建立獨立的 POC session",
@@ -263,6 +274,7 @@ class BridgeAgentRuntime:
         return json.loads(raw)
 
     def _run(self, task: str, payload: dict) -> dict | None:
+        self.last_trace_id = None
         request = {
             "task": task,
             "workspace_root": self.workspace_root,
@@ -275,6 +287,8 @@ class BridgeAgentRuntime:
             result = response.get("result")
             if not isinstance(result, dict):
                 raise RuntimeError("bridge returned an invalid result")
+            trace_id = response.get("trace_id")
+            self.last_trace_id = str(trace_id) if trace_id else None
             return result
         except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError) as exc:
             raise RuntimeError(f"coding agent bridge failed: {exc}") from exc
@@ -352,6 +366,12 @@ class BridgeAgentRuntime:
             return self.fallback.summarize_spec(session=session)
         return str(result.get("summary", ""))
 
+    def plan_poc(self, *, session: AgentSession) -> str:
+        result = self._run("plan_poc", {"session": session.model_dump(mode="json")})
+        if result is None:
+            return self.fallback.plan_poc(session=session)
+        return str(result.get("plan", ""))
+
     def ready_for_poc(self, *, session: AgentSession) -> list[str]:
         result = self._run("ready_for_poc", {"session": session.model_dump(mode="json")})
         if result is None:
@@ -377,3 +397,32 @@ def get_agent_runtime() -> AgentRuntime:
             workspace_root=os.getenv("AGENT_WORKSPACE_ROOT", "/workspace"),
         )
     return MockAgentRuntime()
+
+
+def agent_runtime_status() -> dict[str, str | None]:
+    provider = os.getenv("AGENT_RUNTIME_PROVIDER", "bridge").strip().lower()
+    if provider in {"mock", "default"}:
+        return {
+            "provider": "mock",
+            "status": "ok",
+            "bridge_url": None,
+            "detail": "mock runtime enabled",
+        }
+
+    bridge_url = os.getenv("AGENT_BRIDGE_URL", "http://host.docker.internal:8020").rstrip("/")
+    try:
+        with urllib.request.urlopen(f"{bridge_url}/health", timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return {
+            "provider": provider,
+            "status": str(payload.get("status", "ok")),
+            "bridge_url": bridge_url,
+            "detail": "bridge reachable",
+        }
+    except Exception as exc:
+        return {
+            "provider": provider,
+            "status": "unreachable",
+            "bridge_url": bridge_url,
+            "detail": str(exc),
+        }
